@@ -19,9 +19,11 @@ library
   build-depends:
       aeson
     , base
+    , bytestring
     , conduit
     , http-client
     , http-types
+    , tagsoup
     , text
     , unliftio
   default-language: Haskell2010

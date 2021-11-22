@@ -20,18 +20,24 @@ import Conduit (ConduitT, (.|))
 import Conduit qualified
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.:))
+import Data.ByteString.Char8 qualified as Char8
+import Data.ByteString.Lazy (ByteString)
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Text.Lazy qualified as TextL
+import Data.Text.Lazy.Encoding qualified as TextL
 import Network.HTTP.Client (
   Manager,
+  Request (..),
+  Response (..),
   defaultManagerSettings,
+  defaultRequest,
   httpLbs,
   newManager,
-  parseRequest_,
-  requestHeaders,
-  responseBody,
  )
 import Network.HTTP.Types (hAccept)
+import Text.HTML.TagSoup qualified as TagSoup
 import Text.Read (readMaybe)
 import UnliftIO.Process (readProcessWithExitCode)
 import UnliftIO.Temporary (withSystemTempDirectory)
@@ -127,9 +133,29 @@ grepPackage package pat =
 
 {-- Hackage API --}
 
--- TODO
+-- https://github.com/haskell/hackage-server/issues/458#issuecomment-975995226
 getAllPackagesByMostDownloads :: Manager -> IO [PackageName]
-getAllPackagesByMostDownloads _ = return []
+getAllPackagesByMostDownloads manager = do
+  resp <- queryHackage manager "/packages/top/"
+  let tags = TagSoup.parseTags $ TextL.decodeUtf8 resp
+      packageNames = mapMaybe getPackageName $ getElems "tr" tags
+  return $ map TextL.toStrict packageNames
+  where
+    getPackageName row =
+      case getElems "a" row of
+        [] -> Nothing
+        [anchorElem] -> Just $ TagSoup.innerText anchorElem
+        _ -> error $ "Unexpectedly got multiple <a> tags in single row: " ++ show row
+
+    getElems name =
+      map (takeUntil (TagSoup.isTagCloseName name))
+      . TagSoup.partitions (TagSoup.isTagOpenName name)
+
+    takeUntil :: (a -> Bool) -> [a] -> [a]
+    takeUntil _ [] = []
+    takeUntil f (x:xs)
+      | f x = [x]
+      | otherwise = x : takeUntil f xs
 
 newtype PackageNameJSON = PackageNameJSON { toPackageName :: PackageName }
   deriving (Show)
@@ -140,15 +166,21 @@ instance FromJSON PackageNameJSON where
 
 getAllPackagesAlphabetical :: Manager -> IO [PackageName]
 getAllPackagesAlphabetical manager = do
-  let req =
-        (parseRequest_ "http://hackage.haskell.org/packages/")
-          { requestHeaders =
-              [ (hAccept, "application/json")
-              ]
-          }
-  resp <- responseBody <$> httpLbs req manager
+  resp <- queryHackage manager "/packages/"
   either error (return . map toPackageName) . eitherDecode $ resp
 
 -- TODO
 downloadPackage :: FilePath -> PackageName -> IO ()
 downloadPackage _ _ = return ()
+
+queryHackage :: Manager -> String -> IO ByteString
+queryHackage manager path = do
+  let req =
+        defaultRequest
+          { host = "hackage.haskell.org"
+          , path = Char8.pack path
+          , requestHeaders =
+              [ (hAccept, "application/json")
+              ]
+          }
+  responseBody <$> httpLbs req manager
