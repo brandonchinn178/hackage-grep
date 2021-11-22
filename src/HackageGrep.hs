@@ -4,11 +4,9 @@
 
 module HackageGrep (
   hackageGrep,
-  hackageGrep_,
+  hackageGrepConduit,
   GrepResult (..),
   GrepResultLine (..),
-  hackageGrepConduit,
-  hackageGrepConduit_,
 
   -- * Options
   HackageGrepOptions (..),
@@ -85,12 +83,6 @@ hackageGrep opts pat =
   Conduit.runConduit $
     hackageGrepConduit opts pat .| Conduit.sinkList
 
--- | Same as 'hackageGrep', except just returns the package name.
---
--- Faster than 'hackageGrep' as it exits after finding the first match.
-hackageGrep_ :: HackageGrepOptions -> Pattern -> IO [PackageName]
-hackageGrep_ opts pat = map packageName <$> hackageGrep opts pat
-
 -- | Same as 'hackageGrep', except streaming the results back.
 hackageGrepConduit :: HackageGrepOptions -> Pattern -> ConduitT i GrepResult IO ()
 hackageGrepConduit HackageGrepOptions{..} pat = do
@@ -105,10 +97,6 @@ hackageGrepConduit HackageGrepOptions{..} pat = do
       case packageOrderBy of
         MostDownloads -> getAllPackagesByMostDownloads
         AToZ -> getAllPackagesAlphabetical
-
--- | Same as 'hackageGrep_', except streaming the results back.
-hackageGrepConduit_ :: HackageGrepOptions -> Pattern -> ConduitT i PackageName IO ()
-hackageGrepConduit_ opts pat = hackageGrepConduit opts pat .| Conduit.mapC packageName
 
 grepPackage :: Manager -> PackageName -> Pattern -> IO (Maybe GrepResult)
 grepPackage manager package pat =
