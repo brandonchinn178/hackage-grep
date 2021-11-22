@@ -1,0 +1,18 @@
+name: hackage-grep
+version: 0.1.0.0
+
+ghc-options: -Wall
+
+library:
+  source-dirs: src
+  dependencies:
+    - base
+    - text
+
+executable:
+  main: exe/Main.hs
+  dependencies:
+    - base
+    - hackage-grep
+    - optparse-applicative
+    - text

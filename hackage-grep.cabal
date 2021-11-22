@@ -1,0 +1,34 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.4.
+--
+-- see: https://github.com/sol/hpack
+
+name:           hackage-grep
+version:        0.1.0.0
+build-type:     Simple
+
+library
+  exposed-modules:
+      HackageGrep
+  other-modules:
+      Paths_hackage_grep
+  hs-source-dirs:
+      src
+  ghc-options: -Wall
+  build-depends:
+      base
+    , text
+  default-language: Haskell2010
+
+executable hackage-grep
+  main-is: exe/Main.hs
+  other-modules:
+      Paths_hackage_grep
+  ghc-options: -Wall
+  build-depends:
+      base
+    , hackage-grep
+    , optparse-applicative
+    , text
+  default-language: Haskell2010
