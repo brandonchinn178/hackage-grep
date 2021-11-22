@@ -22,6 +22,7 @@ library
     , bytestring
     , conduit
     , http-client
+    , http-client-tls
     , http-types
     , tagsoup
     , text
