@@ -20,6 +20,7 @@ library
       base
     , conduit
     , text
+    , unliftio
   default-language: Haskell2010
 
 executable hackage-grep

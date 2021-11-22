@@ -9,6 +9,7 @@ library:
     - base
     - conduit
     - text
+    - unliftio
 
 executable:
   main: exe/Main.hs
