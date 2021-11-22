@@ -7,12 +7,14 @@ library:
   source-dirs: src
   dependencies:
     - base
+    - conduit
     - text
 
 executable:
   main: exe/Main.hs
   dependencies:
     - base
+    - conduit
     - hackage-grep
     - optparse-applicative
     - text
