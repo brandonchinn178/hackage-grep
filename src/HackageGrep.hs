@@ -19,8 +19,19 @@ module HackageGrep (
 import Conduit (ConduitT, (.|))
 import Conduit qualified
 import Control.Monad.IO.Class (liftIO)
+import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.:))
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Network.HTTP.Client (
+  Manager,
+  defaultManagerSettings,
+  httpLbs,
+  newManager,
+  parseRequest_,
+  requestHeaders,
+  responseBody,
+ )
+import Network.HTTP.Types (hAccept)
 import Text.Read (readMaybe)
 import UnliftIO.Process (readProcessWithExitCode)
 import UnliftIO.Temporary (withSystemTempDirectory)
@@ -76,11 +87,19 @@ hackageGrep_ opts pat = map packageName <$> hackageGrep opts pat
 -- | Same as 'hackageGrep', except streaming the results back.
 hackageGrepConduit :: HackageGrepOptions -> Pattern -> ConduitT i GrepResult IO ()
 hackageGrepConduit HackageGrepOptions{..} pat = do
-  packages <- takeMaybe packageLimit <$> liftIO (getAllPackages packageOrderBy)
+  packages <- liftIO $ do
+    manager <- newManager defaultManagerSettings
+    takeMaybe packageLimit <$> getAllPackages manager
+
   Conduit.yieldMany packages .| Conduit.concatMapMC (flip grepPackage pat)
   where
     takeMaybe Nothing = id
     takeMaybe (Just x) = take x
+
+    getAllPackages =
+      case packageOrderBy of
+        MostDownloads -> getAllPackagesByMostDownloads
+        AToZ -> getAllPackagesAlphabetical
 
 -- | Same as 'hackageGrep_', except streaming the results back.
 hackageGrepConduit_ :: HackageGrepOptions -> Pattern -> ConduitT i PackageName IO ()
@@ -109,8 +128,26 @@ grepPackage package pat =
 {-- Hackage API --}
 
 -- TODO
-getAllPackages :: OrderPackagesBy -> IO [PackageName]
-getAllPackages _ = return []
+getAllPackagesByMostDownloads :: Manager -> IO [PackageName]
+getAllPackagesByMostDownloads _ = return []
+
+newtype PackageNameJSON = PackageNameJSON { toPackageName :: PackageName }
+  deriving (Show)
+
+instance FromJSON PackageNameJSON where
+  parseJSON = withObject "PackageName" $ \o ->
+    PackageNameJSON <$> o .: "packageName"
+
+getAllPackagesAlphabetical :: Manager -> IO [PackageName]
+getAllPackagesAlphabetical manager = do
+  let req =
+        (parseRequest_ "http://hackage.haskell.org/packages/")
+          { requestHeaders =
+              [ (hAccept, "application/json")
+              ]
+          }
+  resp <- responseBody <$> httpLbs req manager
+  either error (return . map toPackageName) . eitherDecode $ resp
 
 -- TODO
 downloadPackage :: FilePath -> PackageName -> IO ()

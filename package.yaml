@@ -6,8 +6,11 @@ ghc-options: -Wall
 library:
   source-dirs: src
   dependencies:
+    - aeson
     - base
     - conduit
+    - http-client
+    - http-types
     - text
     - unliftio
 
