@@ -14,8 +14,10 @@ library:
     - http-client-tls
     - http-types
     - tagsoup
+    - tar
     - text
     - unliftio
+    - zlib
 
 executable:
   main: exe/Main.hs

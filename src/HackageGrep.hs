@@ -16,10 +16,12 @@ module HackageGrep (
   defaultGrepOptions,
 ) where
 
+import Codec.Archive.Tar qualified as Tar
+import Codec.Compression.GZip qualified as GZip
 import Conduit (ConduitT, (.|))
 import Conduit qualified
 import Control.Monad.IO.Class (liftIO)
-import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.:))
+import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.:), (.:?), (.!=))
 import Data.ByteString.Lazy (ByteString)
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
@@ -111,7 +113,8 @@ hackageGrepConduit_ opts pat = hackageGrepConduit opts pat .| Conduit.mapC packa
 grepPackage :: Manager -> PackageName -> Pattern -> IO (Maybe GrepResult)
 grepPackage manager package pat =
   withSystemTempDirectory (Text.unpack $ "hackage-grep-" <> package) $ \dir -> do
-    downloadPackage manager dir package
+    latestVersion <- getLatestVersion manager package
+    downloadPackage manager dir package latestVersion
     (_, out, _) <- readProcessWithExitCode "grep" ["-rnI", Text.unpack pat, dir] ""
     let result =
           GrepResult
@@ -162,22 +165,42 @@ instance FromJSON PackageNameJSON where
     PackageNameJSON <$> o .: "packageName"
 
 getAllPackagesAlphabetical :: Manager -> IO [PackageName]
-getAllPackagesAlphabetical manager = do
-  resp <- queryHackage manager "/packages/"
-  either error (return . map toPackageName) . eitherDecode $ resp
+getAllPackagesAlphabetical manager =
+  map toPackageName <$> queryHackageJSON manager "/packages/"
 
--- TODO
-downloadPackage :: Manager -> FilePath -> PackageName -> IO ()
-downloadPackage _ _ _ = return ()
+data PreferredVersions = PreferredVersions
+  { normalVersion :: [Text]
+  , _deprecatedVersion :: [Text]
+  }
+
+instance FromJSON PreferredVersions where
+  parseJSON = withObject "PreferredVersions" $ \o ->
+    PreferredVersions
+      <$> o .: "normal-version"
+      <*> o .:? "deprecated-version" .!= []
+
+getLatestVersion :: Manager -> PackageName -> IO Text
+getLatestVersion manager package =
+  head . normalVersion <$> queryHackageJSON manager ("/package/" <> package <> "/preferred")
+
+downloadPackage :: Manager -> FilePath -> PackageName -> Text -> IO ()
+downloadPackage manager dir package version = do
+  let packageId = package <> "-" <> version
+  resp <- queryHackage manager ("/package/" <> packageId <> "/" <> packageId <> ".tar.gz")
+  Tar.unpack dir . Tar.read . GZip.decompress $ resp
 
 queryHackage :: Manager -> Text -> IO ByteString
-queryHackage manager path = do
+queryHackage manager path = queryHackage' manager path id
+
+queryHackageJSON :: FromJSON a => Manager -> Text -> IO a
+queryHackageJSON manager path = do
+  resp <-
+    queryHackage' manager path $ \req ->
+      req{requestHeaders = (hAccept, "application/json") : requestHeaders req}
+  either error return $ eitherDecode resp
+
+queryHackage' :: Manager -> Text -> (Request -> Request) -> IO ByteString
+queryHackage' manager path f = do
   reqBase <- parseUrlThrow "https://hackage.haskell.org"
-  let req =
-        reqBase
-          { path = Text.encodeUtf8 path
-          , requestHeaders =
-              [ (hAccept, "application/json")
-              ]
-          }
+  let req = f $ reqBase{path = Text.encodeUtf8 path}
   responseBody <$> httpLbs req manager
