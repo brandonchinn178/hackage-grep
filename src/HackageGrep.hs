@@ -36,6 +36,7 @@ import Network.HTTP.Client (
  )
 import Network.HTTP.Client.TLS (newTlsManager)
 import Network.HTTP.Types (hAccept)
+import System.FilePath (makeRelative)
 import Text.HTML.TagSoup qualified as TagSoup
 import Text.Read (readMaybe)
 import UnliftIO.Process (readProcessWithExitCode)
@@ -107,16 +108,20 @@ grepPackage manager package pat =
     let result =
           GrepResult
             { packageName = package
-            , matchedLines = map parseResultLine . Text.lines . Text.pack $ out
+            , matchedLines = map (parseResultLine dir) . Text.lines . Text.pack $ out
             }
     return $ if null (matchedLines result) then Nothing else Just result
   where
-    parseResultLine line =
+    parseResultLine dir line =
       case Text.splitOn ":" line of
-        filePath : lineNumberStr : rest
+        filePathAbs : lineNumberStr : rest
           | Just lineNumber <- readMaybe $ Text.unpack lineNumberStr
-          , lineContent <- Text.intercalate ":" rest
-          -> GrepResultLine{..}
+          ->
+            GrepResultLine
+              { filePath = Text.pack . makeRelative dir . Text.unpack $ filePathAbs
+              , lineNumber = lineNumber
+              , lineContent = Text.intercalate ":" rest
+              }
         _ -> error $ "grep returned output in unknown format: " ++ show line
 
 {-- Hackage API --}

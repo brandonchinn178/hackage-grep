@@ -10,6 +10,7 @@ library:
     - base
     - bytestring
     - conduit
+    - filepath
     - http-client
     - http-client-tls
     - http-types
